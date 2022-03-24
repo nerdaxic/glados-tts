@@ -1,42 +1,52 @@
 import sys
 import os
-sys.path.insert(0, os.getcwd()+'/glados_tts')
-
+import logging
 import torch
 from utils.tools import prepare_text
 from scipy.io.wavfile import write
 import time
+from flask import Flask, request, send_file
+import urllib.parse
+import shutil
 
-print("\033[1;94mINFO:\033[;97m Initializing TTS Engine...")
+sys.path.insert(0, os.getcwd()+'/glados_tts')
+logging.basicConfig(filename='glados_service.log',
+    format='[%(asctime)s.%(msecs)03d] [%(levelname)s]\t%(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',level=logging.DEBUG)
 
-# Select the device
-if torch.is_vulkan_available():
-	device = 'vulkan'
-if torch.cuda.is_available():
-	device = 'cuda'
-else:
-	device = 'cpu'
+def printedLog(message):
+    logging.info(message)
+    print(message)
 
-# Load models
-if __name__ == "__main__":
+def printTimelapse(processName,old_time):
+    printedLog(f"{processName} took {str((time.time() - old_time) * 1000)} ms")
+
+def selectDevice():
+    if torch.is_vulkan_available():
+        device = 'vulkan'
+    elif torch.cuda.is_available():
+        device = 'cuda'
+    else:
+        device = 'cpu'
+    printedLog(f"Device selected: {device}.")
+    return device
+
+def loadModels(device):
 	glados = torch.jit.load('models/glados.pt')
 	vocoder = torch.jit.load('models/vocoder-gpu.pt', map_location=device)
-else:
-	glados = torch.jit.load('glados_tts/models/glados.pt')
-	vocoder = torch.jit.load('glados_tts/models/vocoder-gpu.pt', map_location=device)
 
-# Prepare models in RAM
-for i in range(4):
-	init = glados.generate_jit(prepare_text(str(i)))
-	init_mel = init['mel_post'].to(device)
-	init_vo = vocoder(init_mel)
+    # Prepare models in RAM
+	for i in range(4):
+		init = glados.generate_jit(prepare_text(str(i)))
+		init_mel = init['mel_post'].to(device)
+		init_vo = vocoder(init_mel)
+	printedLog(f"Models loaded.")
+	return glados,vocoder
 
 
 def glados_tts(text, key=False):
-
 	# Tokenize, clean and phonemize input text
 	x = prepare_text(text).to('cpu')
-
 	with torch.no_grad():
 
 		# Generate generic TTS-output
@@ -46,19 +56,21 @@ def glados_tts(text, key=False):
 		# Use HiFiGAN as vocoder to make output sound like GLaDOS
 		mel = tts_output['mel_post'].to(device)
 		audio = vocoder(mel)
-		print("\033[1;94mINFO:\033[;97m The audio sample took " + str(round((time.time() - old_time) * 1000)) + " ms to generate.")
+		printTimelapse("The audio sample",old_time)
 
 		# Normalize audio to fit in wav-file
 		audio = audio.squeeze()
 		audio = audio * 32768.0
 		audio = audio.cpu().numpy().astype('int16')
 		if(key):
-			output_file = ('audio/GLaDOS-tts-temp-output-'+key+'.wav')
+			output_key = text.replace(" ", "_")
+			output_file = ('audio/GLaDOS-tts-temp-output-'+output_key+'.wav')
 		else:
 			output_file = ('audio/GLaDOS-tts-temp-output.wav')
 
 		# Write audio file to disk
 		# 22,05 kHz sample rate
+		logging.info(f"Saving audio as {output_file}")
 		write(output_file, 22050, audio)
 
 	return True
@@ -66,20 +78,20 @@ def glados_tts(text, key=False):
 
 # If the script is run directly, assume remote engine
 if __name__ == "__main__":
+	printedLog("Initializing TTS Remote Engine...")
 
+	# Select the device
+	device = selectDevice()
+	# Load models
+	glados,vocoder = loadModels(device)
 	# Remote Engine Veritables
 	PORT = 8124
 	CACHE = True
 
-	from flask import Flask, request, send_file
-	import urllib.parse
-	import shutil
-
-	print("\033[1;94mINFO:\033[;97m Initializing TTS Server...")
+	printedLog("Initializing TTS Server...")
 
 	app = Flask(__name__)
-
-	#@app.route('/synthesize/', defaults={'text': ''})
+	@app.route('/synthesize/', defaults={'text': ''})
 	@app.route('/synthesize/<path:text>')
 	def synthesize(text):
 		if(text == ''): return 'No input'
@@ -97,14 +109,14 @@ if __name__ == "__main__":
 
 			# Update access time. This will allow for routine cleanups
 			os.utime(file, None)
-			print("\033[1;94mINFO:\033[;97m The audio sample sent from cache.")
+			printedLog("The audio sample sent from cache.")
 			return send_file(file)
 
 		# Generate New Sample
 		key = str(time.time())[7:]
 		if(glados_tts(line, key)):
-			tempfile = os.getcwd()+'/audio/GLaDOS-tts-temp-output-'+key+'.wav'
-
+			output_key = text.replace(" ", "_")
+			tempfile = os.getcwd()+'/audio/GLaDOS-tts-temp-output-'+output_key+'.wav'
 			# If the line isn't too long, store in cache
 			if(len(line) < 200 and CACHE):
 				shutil.move(tempfile, file)
@@ -119,4 +131,5 @@ if __name__ == "__main__":
 
 	cli = sys.modules['flask.cli']
 	cli.show_server_banner = lambda *x: None
+	printedLog(f"Listening in http://localhost:{PORT}/synthesize/{'{PRHASE}'}")
 	app.run(host="0.0.0.0", port=PORT)
