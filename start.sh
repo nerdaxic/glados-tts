@@ -17,7 +17,8 @@ ARG="${1:-unset}"
 
 #Default options
 BUILD=false
-CACHE=true
+BUILD_CACHE=true
+CACHE=false
 DAEMON=false
 
 #Check all arguments to assign build values
@@ -27,10 +28,13 @@ for i in $@; do
 	        BUILD=true
 	        ;;
 	     "-f") 
-	        CACHE=false
+	        BUILD_CACHE=false
 	        ;;
 	     "-d") 
 	        DAEMON=true
+	        ;;
+	     "-c") 
+	        CACHE=true
 	        ;;
 	    "-h") 
 	        #Help requested.
@@ -49,24 +53,40 @@ fi
 if [ "$BUILD" = true ]; then
 	echo "Building image for GLaDOS-tts..."
 	BUILD_ARGS=""
-	if [ ! "$CACHE" = true ]; then
+	if [ ! "$BUILD_CACHE" = true ]; then
 		echo "Not using build cache"
 		BUILD_ARGS="--no-cache"
 	fi
 	docker build -f docker/Dockerfile -t $IMAGE_NAME $BUILD_ARGS .
 fi
 
-RUN_ARGS=""
-echo "DAEMON: $DAEMON"
+DAEMON_ARG=""
 if [ "$DAEMON" = true ]; then
-	RUN_ARGS="-d"
+	DAEMON_ARG="-d"
 fi
 
+CACHE_ARG=""
+if [ "$CACHE" = true ]; then
+	#ToDo: Figure out how to make this method handle spaces
+	#in the path.  Currently breaks if there is a space
+	#in the current directory path.
+	CACHE_ARG="-v "${PWD}"/audio:/glados-tts/audio"
+fi
+
+RUN_ARGS="$DAEMON_ARG $CACHE_ARG"
+
+#Create a folder to cache all the audio files locally
+
 mkdir -p audio
+echo -e "docker run --name $IMAGE_NAME
+		   --rm
+		   -p 8124:8124
+		   $RUN_ARGS
+		   $IMAGE_NAME python3 engine.py"
+
 #Start the image, the tts engine and map the ports
 docker run --name $IMAGE_NAME \
 		   --rm \
 		   -p 8124:8124 \
-		   -v "$PWD"/audio:/glados-tts/audio \
-		   $RUN_ARGS \
+		   $RUN_ARGS  \
 		   $IMAGE_NAME python3 engine.py
