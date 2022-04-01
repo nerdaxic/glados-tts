@@ -49,7 +49,7 @@ done
 while getopts ":c:" opt; do
 	case $opt in
 		c)
-			if [ ! -z "$OPTARG" ];then
+			if [[ ! -z "$OPTARG" && ! "$OPTARG" == -* ]];then
 				AUDIO_PATH="$OPTARG"
 			fi
 			;;
