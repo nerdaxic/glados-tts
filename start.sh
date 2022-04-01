@@ -8,6 +8,7 @@ function usage {
     echo "  -b Build the image."
     echo "  -f Full build.  Do not use build cache."
     echo "  -d Run in background (daemon)."
+    echo "  -c Enable cache for audio files.  If no path is provided, will use local audio folder."
     echo "  If no arguemnts are supplied the default behavior is to"
     echo "  build the image if a version is not already available, "
     echo "  and start the the glados-tts engine"
@@ -79,9 +80,8 @@ if [ "$DAEMON" = true ]; then
 fi
 
 if [[ "$CACHE" = true && -z "$AUDIO_PATH" ]]; then
-	#ToDo: Figure out how to make this method handle spaces
-	#in the path.  Currently breaks if there is a space
-	#in the current directory path.
+	#Create a folder to cache all the audio files locally
+	mkdir -p audio
 	AUDIO_PATH="${PWD}"/audio
 fi
 
@@ -95,9 +95,7 @@ fi
 
 RUN_ARGS="$DAEMON_ARG $AUDIO_MOUNT"
 
-#Create a folder to cache all the audio files locally
 
-mkdir -p audio
 echo -e "docker run --name $IMAGE_NAME
 		   --rm
 		   -p 8124:8124
