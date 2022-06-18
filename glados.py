@@ -17,6 +17,7 @@ logging.basicConfig(filename='glados_service.log',
 glados = None
 vocoder = None
 device = None
+audioPath = "audio/"
 
 def printedLog(message):
     logging.info(message)
@@ -68,11 +69,11 @@ def playSound(fileName):
     else:
         call(["aplay", f"./{fileName}"])
 
-def saveAudioFile(audio,output_key, key=False):
-    if(key):
-        output_file = ('audio/GLaDOS-tts-'+output_key+'.wav')
-    else:
-        output_file = ('audio/GLaDOS-tts-.wav')
+def saveAudioFile(audio,output_key=None):
+    output_file_name = "GLaDOS-tts-tempfile"
+    if(output_key):
+        output_file_name = output_key
+    output_file = (f"{audioPath}{output_key}.wav")
     # Write audio file to disk at 22,05 kHz sample rate
     logging.info(f"Saving audio as {output_file}")
     write(output_file, 22050, audio)
@@ -104,7 +105,7 @@ def main():
         input_text = input("Input: ")
         output_key = input_text.replace(" ", "_")
         audio = glados_tts(input_text)
-        output_file = saveAudioFile(audio,output_key,True)
+        output_file = saveAudioFile(audio,output_key)
         playSound(output_file)
 
 if __name__ == "__main__":
