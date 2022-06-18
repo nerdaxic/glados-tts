@@ -1,16 +1,14 @@
 import sys
 import os
 import logging
-import torch
-from utils.tools import prepare_text
-from scipy.io.wavfile import write
 import time
 from flask import Flask, request, send_file
 import urllib.parse
 import shutil
+import glados
 
 sys.path.insert(0, os.getcwd()+'/glados_tts')
-logging.basicConfig(filename='glados_service.log',
+logging.basicConfig(filename='glados_engine_service.log',
     format='[%(asctime)s.%(msecs)03d] [%(levelname)s]\t%(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',level=logging.DEBUG)
 
@@ -21,115 +19,62 @@ def printedLog(message):
 def printTimelapse(processName,old_time):
     printedLog(f"{processName} took {str((time.time() - old_time) * 1000)} ms")
 
-def selectDevice():
-    if torch.is_vulkan_available():
-        device = 'vulkan'
-    elif torch.cuda.is_available():
-        device = 'cuda'
-    else:
-        device = 'cpu'
-    printedLog(f"Device selected: {device}.")
-    return device
+def filenameParse(input_text):
+    filename = "GLaDOS-tts-"+input_text.replace(" ", "-")
+    filename = filename.replace("!", "")
+    filename = filename.replace("°c", "degrees celcius")
+    filename = filename.replace(",", "")+".wav"
+    return filename
 
-def loadModels(device):
-	glados = torch.jit.load('models/glados.pt')
-	vocoder = torch.jit.load('models/vocoder-gpu.pt', map_location=device)
-
-    # Prepare models in RAM
-	for i in range(4):
-		init = glados.generate_jit(prepare_text(str(i)))
-		init_mel = init['mel_post'].to(device)
-		init_vo = vocoder(init_mel)
-	printedLog(f"Models loaded.")
-	return glados,vocoder
-
-
-def glados_tts(text, key=False):
-	# Tokenize, clean and phonemize input text
-	x = prepare_text(text).to('cpu')
-	with torch.no_grad():
-
-		# Generate generic TTS-output
-		old_time = time.time()
-		tts_output = glados.generate_jit(x)
-
-		# Use HiFiGAN as vocoder to make output sound like GLaDOS
-		mel = tts_output['mel_post'].to(device)
-		audio = vocoder(mel)
-		printTimelapse("The audio sample",old_time)
-
-		# Normalize audio to fit in wav-file
-		audio = audio.squeeze()
-		audio = audio * 32768.0
-		audio = audio.cpu().numpy().astype('int16')
-		if(key):
-			output_key = text.replace(" ", "_")
-			output_file = ('audio/GLaDOS-tts-temp-output-'+output_key+'.wav')
-		else:
-			output_file = ('audio/GLaDOS-tts-temp-output.wav')
-
-		# Write audio file to disk
-		# 22,05 kHz sample rate
-		logging.info(f"Saving audio as {output_file}")
-		write(output_file, 22050, audio)
-
-	return True
-
+def checkCache(file):
+    # Update access time. This will allow for routine cleanups
+    os.utime(file, None)
+    printedLog("The audio sample sent from cache.")
+    return send_file(file)
 
 # If the script is run directly, assume remote engine
 if __name__ == "__main__":
-	printedLog("Initializing TTS Remote Engine...")
+    printedLog("Initializing TTS Remote Engine...")
+    glados.loadModels()
+    PORT = 8124
+    CACHE = True
 
-	# Select the device
-	device = selectDevice()
-	# Load models
-	glados,vocoder = loadModels(device)
-	# Remote Engine Veritables
-	PORT = 8124
-	CACHE = True
+    printedLog("Initializing TTS Server...")
+    app = Flask(__name__)
+    @app.route('/synthesize/', defaults={'text': ''})
+    @app.route('/synthesize/<path:text>')
+    def synthesize(text):
+        if(text == ''): return 'No input'
+        print(text)
+        input_text = urllib.parse.unquote(request.url[request.url.find('synthesize/')+11:])
+        filename = filenameParse(input_text)
+        print(filename)
 
-	printedLog("Initializing TTS Server...")
+        if not os.path.exists('audio'):
+            os.makedirs('audio')
+        file = os.getcwd()+'/audio/'+filename
+        print(file)
 
-	app = Flask(__name__)
-	@app.route('/synthesize/', defaults={'text': ''})
-	@app.route('/synthesize/<path:text>')
-	def synthesize(text):
-		if(text == ''): return 'No input'
-		line = urllib.parse.unquote(request.url[request.url.find('synthesize/')+11:])
-		filename = "GLaDOS-tts-"+line.replace(" ", "-")
-		filename = filename.replace("!", "")
-		filename = filename.replace("°c", "degrees celcius")
-		filename = filename.replace(",", "")+".wav"
-		if not os.path.exists('audio'):
-			os.makedirs('audio')
-		file = os.getcwd()+'/audio/'+filename
+        # Check for Local Cache
+        if(os.path.isfile(file)): return checkCache(file)
+        print("No cache")
 
-		# Check for Local Cache
-		if(os.path.isfile(file)):
+        # Generate New Sample
+        audio = glados.glados_tts(input_text)
+        print("audio??")
+        output_key = input_text.replace(" ", "_")
+        print(output_key)
+        output_file = glados.saveAudioFile(audio,output_key)
+        print(output_file)
+		# If the input_text isn't too long, store in cache
+        if(len(input_text) < 200 and CACHE):
+            shutil.move(output_file, file)
+        else:
+            return send_file(output_file)
+            os.remove(output_file)
+        return send_file(file)
 
-			# Update access time. This will allow for routine cleanups
-			os.utime(file, None)
-			printedLog("The audio sample sent from cache.")
-			return send_file(file)
-
-		# Generate New Sample
-		key = str(time.time())[7:]
-		if(glados_tts(line, key)):
-			output_key = text.replace(" ", "_")
-			tempfile = os.getcwd()+'/audio/GLaDOS-tts-temp-output-'+output_key+'.wav'
-			# If the line isn't too long, store in cache
-			if(len(line) < 200 and CACHE):
-				shutil.move(tempfile, file)
-			else:
-				return send_file(tempfile)
-				os.remove(tempfile)
-
-			return send_file(file)
-
-		else:
-			return 'TTS Engine Failed'
-
-	cli = sys.modules['flask.cli']
-	cli.show_server_banner = lambda *x: None
-	printedLog(f"Listening in http://localhost:{PORT}/synthesize/{'{PRHASE}'}")
-	app.run(host="0.0.0.0", port=PORT)
+    cli = sys.modules['flask.cli']
+    cli.show_server_banner = lambda *x: None
+    printedLog(f"Listening in http://localhost:{PORT}/synthesize/{'{PRHASE}'}")
+    app.run(host="0.0.0.0", port=PORT)
