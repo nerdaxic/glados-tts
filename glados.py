@@ -13,6 +13,11 @@ logging.basicConfig(filename='glados_service.log',
     format='[%(asctime)s.%(msecs)03d] [%(levelname)s]\t%(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',level=logging.DEBUG)
 
+#Global variables
+glados = None
+vocoder = None
+device = None
+
 def printedLog(message):
     logging.info(message)
     print(message)
@@ -30,7 +35,7 @@ def selectDevice(optionDevices):
     printedLog(f"Device selected: {device}.")
     return device
 
-def loadModels(device):
+def loadModelsOnDevice(device):
     glados = torch.jit.load('models/glados.pt')
     vocoder = torch.jit.load('models/vocoder-gpu.pt', map_location=device)
 
@@ -42,60 +47,65 @@ def loadModels(device):
     printedLog(f"Models loaded.")
     return glados,vocoder
 
+def loadModels():
+    global glados,vocoder,device
+    optionDevices = ["vulkan","cuda"]
+    while(glados==None):
+        # Select the device
+        deviceAux = selectDevice(optionDevices)
+        try:
+            # Load models
+            glados,vocoder = loadModelsOnDevice(deviceAux)
+            device = device
+        except:
+            printedLog(f"Execption loading device "+deviceAux)
+            optionDevices.remove(deviceAux)
+    return glados!=None
+
 def playSound(fileName):
     if 'winsound' in mod:
         winsound.PlaySound(fileName, winsound.SND_FILENAME)
     else:
         call(["aplay", f"./{fileName}"])
 
+def saveAudioFile(audio,output_key, key=False):
+    if(key):
+        output_file = ('audio/GLaDOS-tts-'+output_key+'.wav')
+    else:
+        output_file = ('audio/GLaDOS-tts-.wav')
+    # Write audio file to disk at 22,05 kHz sample rate
+    logging.info(f"Saving audio as {output_file}")
+    write(output_file, 22050, audio)
+    return output_file
+
+def glados_tts(text):
+	# Tokenize, clean and phonemize input text
+    x = prepare_text(text).to('cpu')
+    with torch.no_grad():
+        # Generate generic TTS-output
+        old_time = time.time()
+        tts_output = glados.generate_jit(x)
+
+        # Use HiFiGAN as vocoder to make output sound like GLaDOS
+        mel = tts_output['mel_post'].to(device)
+        audio = vocoder(mel)
+        printTimelapse("The audio sample",old_time)
+
+        # Normalize audio to fit in wav-file
+        audio = audio.squeeze()
+        audio = audio * 32768.0
+        audio = audio.cpu().numpy().astype('int16')
+    return audio
 
 def main():
     printedLog("Initializing TTS Engine...")
-    glados = None
-    vocoder = None
-    optionDevices = ["vulkan","cuda"]
-    while(glados==None):
-        # Select the device
-        device = selectDevice(optionDevices)
-        try:
-            # Load models
-            glados,vocoder = loadModels(device)
-        except:
-            optionDevices.remove(device)
-
+    loadModels()
     while(1):
         input_text = input("Input: ")
-
-        # Tokenize, clean and phonemize input text
-        x = prepare_text(input_text).to('cpu')
-
-        with torch.no_grad():
-
-            # Generate generic TTS-output
-            old_time = time.time()
-            tts_output = glados.generate_jit(x)
-            printTimelapse("Forward Tacotron",old_time)
-
-            # Use HiFiGAN as vocoder to make output sound like GLaDOS
-            old_time = time.time()
-            mel = tts_output['mel_post'].to(device)
-            audio = vocoder(mel)
-            printTimelapse("HiFiGAN",old_time)
-
-            # Normalize audio to fit in wav-file
-            audio = audio.squeeze()
-            audio = audio * 32768.0
-            audio = audio.cpu().numpy().astype('int16')
-
-            # Write audio file to disk
-            # 22,05 kHz sample rate
-            output_file = input_text.replace(" ", "_") + ".wav"
-            logging.info(f"Saving audio as {output_file}")
-            write(output_file, 22050, audio)
-
-            # Play audio file
-            playSound(output_file)
-
+        output_key = input_text.replace(" ", "_")
+        audio = glados_tts(input_text)
+        output_file = saveAudioFile(audio,output_key,True)
+        playSound(output_file)
 
 if __name__ == "__main__":
     main()
