@@ -3,6 +3,7 @@ import logging
 from utils.tools import prepare_text
 from scipy.io.wavfile import write
 import time
+import os.path
 from sys import modules as mod
 try:
     import winsound
@@ -79,6 +80,12 @@ def saveAudioFile(audio,output_key=None):
     write(output_file, 22050, audio)
     return output_file
 
+def checkAudioFile(file_name):
+    alreadyExist = os.path.exists(f"{audioPath}{file_name}.wav")
+    print("alreadyExist:")
+    print(alreadyExist)
+    return alreadyExist
+
 def glados_tts(text):
 	# Tokenize, clean and phonemize input text
     x = prepare_text(text).to('cpu')
@@ -104,8 +111,12 @@ def main():
     while(1):
         input_text = input("Input: ")
         output_key = input_text.replace(" ", "_")
-        audio = glados_tts(input_text)
-        output_file = saveAudioFile(audio,output_key)
+        audioFileExist = checkAudioFile(output_key)
+        if (audioFileExist):
+            output_file = f"{audioPath}{output_key}.wav"
+        else:
+            audio = glados_tts(input_text)
+            output_file = saveAudioFile(audio,output_key)
         playSound(output_file)
 
 if __name__ == "__main__":
