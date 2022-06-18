@@ -20,10 +20,10 @@ def printedLog(message):
 def printTimelapse(processName,old_time):
     printedLog(f"{processName} took {str((time.time() - old_time) * 1000)} ms")
 
-def selectDevice():
-    if torch.is_vulkan_available():
+def selectDevice(optionDevices):
+    if "vulkan" in optionDevices and torch.is_vulkan_available():
         device = 'vulkan'
-    elif torch.cuda.is_available():
+    elif "cuda" in optionDevices and torch.cuda.is_available():
         device = 'cuda'
     else:
         device = 'cpu'
@@ -51,10 +51,17 @@ def playSound(fileName):
 
 def main():
     printedLog("Initializing TTS Engine...")
-    # Select the device
-    device = selectDevice()
-    # Load models
-    glados,vocoder = loadModels(device)
+    glados = None
+    vocoder = None
+    optionDevices = ["vulkan","cuda"]
+    while(glados==None):
+        # Select the device
+        device = selectDevice(optionDevices)
+        try:
+            # Load models
+            glados,vocoder = loadModels(device)
+        except:
+            optionDevices.remove(device)
 
     while(1):
         input_text = input("Input: ")
@@ -82,7 +89,7 @@ def main():
 
             # Write audio file to disk
             # 22,05 kHz sample rate
-            output_file = input_text.replace(" ", "_")
+            output_file = input_text.replace(" ", "_") + ".wav"
             logging.info(f"Saving audio as {output_file}")
             write(output_file, 22050, audio)
 
