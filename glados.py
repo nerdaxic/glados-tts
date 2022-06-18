@@ -82,8 +82,6 @@ def saveAudioFile(audio,output_key=None):
 
 def checkAudioFile(file_name):
     alreadyExist = os.path.exists(f"{audioPath}{file_name}.wav")
-    print("alreadyExist:")
-    print(alreadyExist)
     return alreadyExist
 
 def glados_tts(text):
