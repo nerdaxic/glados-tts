@@ -41,37 +41,36 @@ if __name__ == "__main__":
 
     printedLog("Initializing TTS Server...")
     app = Flask(__name__)
-    @app.route('/synthesize/', defaults={'text': ''})
-    @app.route('/synthesize/<path:text>')
+    @app.route('/synthesize/', defaults={'text': ''},methods=["POST","GET"])
+    @app.route('/synthesize/<path:text>',methods=["POST","GET"])
     def synthesize(text):
-        if(text == ''): return 'No input'
-        print(text)
-        input_text = urllib.parse.unquote(request.url[request.url.find('synthesize/')+11:])
-        filename = filenameParse(input_text)
-        print(filename)
+        if(request.method=="GET"):
+            if(text == ''): return 'No input'
+            input_text = urllib.parse.unquote(request.url[request.url.find('synthesize/')+11:])
+        elif(request.method=="POST"):
+            input_text = request.data.decode('ascii')
+        printedLog(f"Input text: {input_text}")
+
+        output_key = filenameParse(input_text)
 
         if not os.path.exists('audio'):
             os.makedirs('audio')
-        file = os.getcwd()+'/audio/'+filename
-        print(file)
+        file = os.getcwd()+'/audio/'+output_key
 
         # Check for Local Cache
-        if(os.path.isfile(file)): return checkCache(file)
-        print("No cache")
+        #if(os.path.isfile(file)): return checkCache(file)
 
         # Generate New Sample
         audio = glados.glados_tts(input_text)
-        print("audio??")
-        output_key = input_text.replace(" ", "_")
-        print(output_key)
         output_file = glados.saveAudioFile(audio,output_key)
-        print(output_file)
+        send_file(file)
 		# If the input_text isn't too long, store in cache
         if(len(input_text) < 200 and CACHE):
             shutil.move(output_file, file)
         else:
-            return send_file(output_file)
-            os.remove(output_file)
+            print("Sending else")
+            return send_file(file)
+        print("No else")
         return send_file(file)
 
     cli = sys.modules['flask.cli']
