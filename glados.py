@@ -5,6 +5,7 @@ from scipy.io.wavfile import write
 import time
 import os.path
 from sys import modules as mod
+import sys
 try:
     import winsound
 except ImportError:
@@ -72,9 +73,9 @@ def playSound(fileName):
 
 def saveAudioFile(audio,output_key=None):
     output_file_name = "GLaDOS-tts-tempfile"
-    if(output_key):
+    if(output_key and len(output_key)<200):
         output_file_name = output_key
-    output_file = (f"{audioPath}{output_key}.wav")
+    output_file = (f"{audioPath}{output_file_name}.wav")
     # Write audio file to disk at 22,05 kHz sample rate
     logging.info(f"Saving audio as {output_file}")
     write(output_file, 22050, audio)
@@ -103,19 +104,34 @@ def glados_tts(text):
         audio = audio.cpu().numpy().astype('int16')
     return audio
 
+def executeFromTerminal(input_text):
+    output_key = input_text.replace(" ", "_")
+    audioFileExist = checkAudioFile(output_key)
+    if (audioFileExist):
+        output_file = f"{audioPath}{output_key}.wav"
+    else:
+        audio = glados_tts(input_text)
+        output_file = saveAudioFile(audio,output_key)
+    playSound(output_file)
+
 def main():
     printedLog("Initializing TTS Engine...")
     loadModels()
-    while(1):
-        input_text = input("Input: ")
-        output_key = input_text.replace(" ", "_")
-        audioFileExist = checkAudioFile(output_key)
-        if (audioFileExist):
-            output_file = f"{audioPath}{output_key}.wav"
-        else:
-            audio = glados_tts(input_text)
-            output_file = saveAudioFile(audio,output_key)
-        playSound(output_file)
+    if(len(sys.argv)==2):
+        printedLog("Using command line argument as text")
+        executeFromTerminal(sys.argv[1])
+    else:
+        while(1):
+            printedLog("Using user input as text")
+            input_text = input("Input: ")
+            output_key = input_text.replace(" ", "_")
+            audioFileExist = checkAudioFile(output_key)
+            if (audioFileExist):
+                output_file = f"{audioPath}{output_key}.wav"
+            else:
+                audio = glados_tts(input_text)
+                output_file = saveAudioFile(audio,output_key)
+            playSound(output_file)
 
 if __name__ == "__main__":
     main()
