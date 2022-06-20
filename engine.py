@@ -23,7 +23,7 @@ def filenameParse(input_text):
     filename = "GLaDOS-tts-"+input_text.replace(" ", "-")
     filename = filename.replace("!", "")
     filename = filename.replace("°c", "degrees celcius")
-    filename = filename.replace(",", "")+".wav"
+    filename = filename.replace(",", "")
     return filename
 
 def checkCache(file):
@@ -55,22 +55,16 @@ if __name__ == "__main__":
 
         if not os.path.exists('audio'):
             os.makedirs('audio')
-        file = os.getcwd()+'/audio/'+output_key
+        file = os.getcwd()+'/audio/'+output_key+".wav"
 
         # Check for Local Cache
-        #if(os.path.isfile(file)): return checkCache(file)
+        if(os.path.isfile(file)): return checkCache(file)
 
         # Generate New Sample
         audio = glados.glados_tts(input_text)
         output_file = glados.saveAudioFile(audio,output_key)
-        send_file(file)
 		# If the input_text isn't too long, store in cache
-        if(len(input_text) < 200 and CACHE):
-            shutil.move(output_file, file)
-        else:
-            print("Sending else")
-            return send_file(file)
-        print("No else")
+        if(len(input_text) < 200 and CACHE): shutil.move(output_file, file)
         return send_file(file)
 
     cli = sys.modules['flask.cli']

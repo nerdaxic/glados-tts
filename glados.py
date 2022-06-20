@@ -59,7 +59,7 @@ def loadModels():
         try:
             # Load models
             glados,vocoder = loadModelsOnDevice(deviceAux)
-            device = device
+            device = deviceAux
         except:
             printedLog(f"Execption loading device "+deviceAux)
             optionDevices.remove(deviceAux)
@@ -87,7 +87,7 @@ def checkAudioFile(file_name):
 
 def glados_tts(text):
 	# Tokenize, clean and phonemize input text
-    x = prepare_text(text).to('cpu')
+    x = prepare_text(text).to(device)
     with torch.no_grad():
         # Generate generic TTS-output
         old_time = time.time()
