@@ -47,8 +47,7 @@ class Glados:
         printed_log(f"Models loaded.")
 
     def load_glados_model(self):
-        #option_devices = ["vulkan","cuda"]
-        option_devices = []
+        option_devices = ["vulkan","cuda"]
         while(self.glados_model==None):
             self.device = self.get_available_device(option_devices)
             try:
