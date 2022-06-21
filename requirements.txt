@@ -1,0 +1,7 @@
+torch
+torchvision
+torchaudio
+phonemizer
+inflect
+Unidecode
+scipy
