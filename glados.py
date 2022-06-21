@@ -3,7 +3,7 @@ import logging
 from utils.tools import prepare_text
 from scipy.io.wavfile import write
 import time
-import os.path
+import os
 from sys import modules as mod
 import sys
 try:
@@ -16,7 +16,7 @@ logging.basicConfig(filename='glados_service.log',
     datefmt='%Y-%m-%d %H:%M:%S',level=logging.DEBUG)
 
 #Global variables
-audio_path = "audio/"
+audio_path = os.getcwd()+'/audio/'
 
 class Glados:
     glados_model = None
@@ -24,7 +24,7 @@ class Glados:
     device = None
 
     def __init__(self):
-        pass
+        check_audio_folder()
 
     def get_available_device(self,option_devices):
         if "vulkan" in option_devices and torch.is_vulkan_available():
@@ -54,7 +54,7 @@ class Glados:
             try:
                 self.load_models()
             except:
-                printed_log(f"Execption loading device "+self.device)
+                printed_log(f"Exception loading device "+self.device)
                 if(self.device != 'cpu'): option_devices.remove(self.device)
                 else: sys.exit()
 
@@ -69,7 +69,7 @@ class Glados:
             # Use HiFiGAN as vocoder to make output sound like GLaDOS
             mel = tts_output['mel_post'].to(self.device)
             audio = self.vocoder(mel)
-            print_timelapse("The audio sample",old_time)
+            print_timelapse("The audio sample: ",old_time)
 
             # Normalize audio to fit in wav-file
             audio = audio.squeeze()
@@ -78,14 +78,15 @@ class Glados:
         return audio
 
     def generate_tts(self, input_text):
-        output_key = input_text.replace(" ", "_")
-        audio_file_exist = check_audio_file(output_key)
+        filename = filename_parse(input_text)
+        audio_file_exist = check_audio_file(filename)
         if (audio_file_exist):
-            output_file = f"{audio_path}{output_key}.wav"
+            printed_log("The audio sample sent from cache.")
+            output_file = f"{audio_path}{filename}"
         else:
             audio = self.get_audio_from_text(input_text)
-            output_file = save_audio_file(audio,output_key)
-        play_sound(output_file)
+            output_file = save_audio_file(audio,filename)
+        return output_file
 
 def printed_log(message):
     logging.info(message)
@@ -98,21 +99,35 @@ def play_sound(fileName):
     if 'winsound' in mod:
         winsound.PlaySound(fileName, winsound.SND_FILENAME)
     else:
-        call(["aplay", f"./{fileName}"])
+        call(["aplay", fileName])
 
-def save_audio_file(audio,output_key=None):
-    output_file_name = "GLaDOS-tts-tempfile"
-    if(output_key and len(output_key)<200):
-        output_file_name = output_key
-    output_file = (f"{audio_path}{output_file_name}.wav")
+def filename_parse(input_text):
+    filename = input_text.replace(" ", "-")
+    filename = filename.replace("!", "")
+    filename = filename.replace("°c", "degrees celcius")
+    filename = filename.replace(",", "")+".wav"
+    return filename
+
+def save_audio_file(audio,filename=None):
+    output_file_name = "GLaDOS-tts-tempfile.wav"
+    if(filename and len(filename)<200):
+        output_file_name = filename
+    output_file = (f"{audio_path}{filename}")
     # Write audio file to disk at 22,05 kHz sample rate
     logging.info(f"Saving audio as {output_file}")
     write(output_file, 22050, audio)
     return output_file
 
-def check_audio_file(file_name):
-    alreadyExist = os.path.exists(f"{audio_path}{file_name}.wav")
-    return alreadyExist
+def check_audio_folder():
+    if not os.path.exists('audio'):
+        os.makedirs('audio')
+
+def check_audio_file(filename):
+    complete_path = f"{audio_path}{filename}"
+    already_exist = os.path.exists(complete_path)
+    # Update access time. This will allow for routine cleanups
+    if(already_exist): os.utime(complete_path, None)
+    return already_exist
 
 def main():
     printed_log("Initializing TTS Engine...")
@@ -120,12 +135,14 @@ def main():
     glados.load_glados_model()
     if(len(sys.argv)==2):
         printed_log("Using command line argument as text")
-        glados.generate_tts(sys.argv[1])
+        output_file = glados.generate_tts(sys.argv[1])
+        play_sound(output_file)
     else:
         while(1):
             printed_log("Using user input as text")
             input_text = input("Input: ")
-            glados.generate_tts(input_text)
+            output_file = glados.generate_tts(input_text)
+            play_sound(output_file)
 
 if __name__ == "__main__":
     main()
