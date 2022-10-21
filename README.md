@@ -24,3 +24,9 @@ The initial, regular Tacotron model was trained first on LJSpeech, and then on a
 * The Forward Tacotron model was only trained on about 600 voice lines.
 * The HiFiGAN model was generated through transfer learning from the sample.
 * All models have been optimized and quantized.
+
+## Set up
+1. Create virtual environment using `python3 -m venv. venv`.
+2. Activate virtual environment using `source .venv/bin/activate`.
+3. Install dependencies using `pip3 install -r requirements.txt`
+
