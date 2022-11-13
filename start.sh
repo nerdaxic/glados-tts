@@ -71,7 +71,7 @@ if [ "$BUILD" = true ]; then
 		echo "Not using build cache"
 		BUILD_ARGS="--no-cache"
 	fi
-	docker build -f docker/Dockerfile -t $IMAGE_NAME $BUILD_ARGS .
+	docker build -f Docker/Dockerfile -t $IMAGE_NAME $BUILD_ARGS .
 fi
 
 DAEMON_ARG=""
